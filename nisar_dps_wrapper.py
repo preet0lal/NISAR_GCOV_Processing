@@ -3,8 +3,10 @@
 import argparse
 import os
 import subprocess
+import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 import s3fs
 from maap.maap import MAAP
@@ -21,7 +23,8 @@ def main():
         nargs=4,
         type=float,
         metavar=("W", "S", "E", "N"),
-        required=True,
+        default=None,
+        help="Optional clipping bounding box; omitted means native GCOV footprint",
     )
 
     args = parser.parse_args()
@@ -60,16 +63,26 @@ def main():
     # Download ONE GCOV granule to this DPS worker
     # ---------------------------------------------------------
 
-    local_h5 = input_dir / Path(args.s3_url).name
-
-    print("Downloading:")
-    print(args.s3_url)
-    print(" ->", local_h5)
-
-    fs.get(
-        args.s3_url,
-        str(local_h5),
-    )
+    source = args.s3_url.strip()
+    if not source:
+        parser.error("--s3_url must not be empty")
+    local_source = Path(unquote(urlparse(source).path) if source.startswith("file://") else source)
+    is_s3 = source.startswith("s3://")
+    local_h5 = input_dir / (Path(urlparse(source).path).name if is_s3 else local_source.name)
+    if local_h5.suffix.lower() not in (".h5", ".hdf5"):
+        parser.error("GCOV input must end with .h5 or .hdf5")
+    created_local_copy = False
+    if is_s3:
+        print("Downloading:", source, "->", local_h5, flush=True)
+        fs.get(source, str(local_h5))
+        created_local_copy = True
+    else:
+        if not local_source.is_file():
+            parser.error("MAAP-staged GCOV file not found: " + source)
+        if local_source.resolve() != local_h5.resolve():
+            shutil.copyfile(local_source, local_h5)
+            created_local_copy = True
+        print("Using staged GCOV:", local_source, flush=True)
 
     print(
         f"Downloaded: "
@@ -107,8 +120,6 @@ def main():
     # Local to this DPS worker only
     dem_cache = input_dir / "DEM_Cache"
 
-    w, s, e, n = args.bbox
-
     cmd = [
         sys.executable,
         str(processor),
@@ -123,9 +134,6 @@ def main():
 
         "--grid_mode", "EASE2",
 
-        "--bbox",
-        str(w), str(s), str(e), str(n),
-
         "--lia", "yes",
         "--nisar_dem_vrt", dem_vrt,
         "--dem_cache_dir", str(dem_cache),
@@ -138,6 +146,9 @@ def main():
 
         "--keep_intermediate", "no",
     ]
+
+    if args.bbox is not None:
+        cmd += ["--bbox", *(str(v) for v in args.bbox)]
 
     print("\nRunning:")
     print(" ".join(cmd))
@@ -154,7 +165,7 @@ def main():
 
         # Raw 7.5-GB HDF5 is not an output product.
         # Remove it before DPS packages results.
-        if local_h5.exists():
+        if created_local_copy and local_h5.exists():
             local_h5.unlink()
 
     print("\nDPS processing complete.")
