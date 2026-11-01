@@ -119,7 +119,8 @@ def main():
         "--frequency", "frequencyA",
         "--pol_pair", "HH_HV",
         "--normalization", "gamma0",
-        "--filter", "none",
+        "--filter", "enhanced_lee",
+        "--filter_window", "7",
 
         "--grid_mode", "EASE2",
 
