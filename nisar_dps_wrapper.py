@@ -117,7 +117,7 @@ def main():
         "--output_dir", str(output_dir),
 
         "--frequency", "frequencyA",
-        "--pol_pair", "HH_HV",
+        "--pol_pair", "auto",
         "--normalization", "gamma0",
         "--filter", "enhanced_lee",
         "--filter_window", "7",
