@@ -8,6 +8,7 @@ from pathlib import Path
 
 import s3fs
 from maap.maap import MAAP
+from proj_setup import configure_projection_environment
 
 
 def main():
@@ -33,6 +34,10 @@ def main():
 
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate EPSG:6933 before acquiring credentials or downloading large HDF5.
+    # Inherit the tested PROJ paths in both Python and the GDAL subprocess.
+    proj_env = configure_projection_environment()
 
     # ---------------------------------------------------------
     # NISAR temporary S3 credentials
@@ -80,7 +85,7 @@ def main():
     # Credentials also available to GDAL / VSIS3
     # ---------------------------------------------------------
 
-    env = os.environ.copy()
+    env = proj_env.copy()
 
     env.update(
         AWS_ACCESS_KEY_ID=creds["accessKeyId"],

@@ -44,3 +44,11 @@ if ! command -v gdalwarp >/dev/null 2>&1; then
 else
     echo "GDAL warp tool: $(command -v gdalwarp)"
 fi
+
+# Verify CRS support inside the built image. If there is no compatible
+# projection database, install pyproj's bundled database and retry.
+if ! python -c "from proj_setup import configure_projection_environment; configure_projection_environment()"; then
+    echo "PROJ database validation failed; adding pyproj's bundled PROJ data."
+    python -m pip install --no-cache-dir pyproj
+    python -c "from proj_setup import configure_projection_environment; configure_projection_environment()"
+fi
