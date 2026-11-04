@@ -55,7 +55,7 @@ Grid options:
 
 Data options:
   --frequency NAME          frequencyA | frequencyB (default frequencyA)
-  --pol_pair PAIR           auto | HH_HV | VV_VH | RH_RV (default auto)
+  --pol_pair PAIR           auto | HH_HV | VV_VH | RH_RV | HH_ONLY | HV_ONLY | VV_ONLY | VH_ONLY | RH_ONLY | RV_ONLY (default auto)
   --normalization TYPE      gamma0 | sigma0 (default gamma0)
   --mode MODE               nofilt | enhanced_lee | gamma_map | all
                             Default: nofilt
@@ -208,7 +208,7 @@ case "$GRID_MODE" in UTM|EASE2) ;; *) echo "Invalid --grid_mode: $GRID_MODE (use
 case "$MODE" in nofilt|enhanced_lee|gamma_map|all) ;; *) echo "Invalid --mode: $MODE" >&2; exit 1 ;; esac
 case "$MOSAIC" in yes|no) ;; *) echo "Invalid --mosaic: $MOSAIC" >&2; exit 1 ;; esac
 case "$FREQUENCY" in frequencyA|frequencyB) ;; *) echo "Invalid --frequency: $FREQUENCY" >&2; exit 1 ;; esac
-case "$POL_PAIR" in auto|HH_HV|VV_VH|RH_RV) ;; *) echo "Invalid --pol_pair: $POL_PAIR" >&2; exit 1 ;; esac
+case "$POL_PAIR" in auto|HH_HV|VV_VH|RH_RV|HH_ONLY|HV_ONLY|VV_ONLY|VH_ONLY|RH_ONLY|RV_ONLY) ;; *) echo "Invalid --pol_pair: $POL_PAIR" >&2; exit 1 ;; esac
 case "$NORMALIZATION" in gamma0|sigma0) ;; *) echo "Invalid --normalization: $NORMALIZATION" >&2; exit 1 ;; esac
 case "$KEEP_INTERMEDIATE" in yes|no) ;; *) echo "Invalid --keep_intermediate: $KEEP_INTERMEDIATE" >&2; exit 1 ;; esac
 case "$USE_EXCEPTION_MASK" in yes|no) ;; *) echo "Invalid --use_exception_mask: $USE_EXCEPTION_MASK" >&2; exit 1 ;; esac

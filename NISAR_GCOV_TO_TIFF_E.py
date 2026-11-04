@@ -136,6 +136,12 @@ POL_PAIRS = {
     "HH_HV": ("HHHH", "HVHV"),
     "VV_VH": ("VVVV", "VHVH"),
     "RH_RV": ("RHRH", "RVRV"),
+    "HH_ONLY": ("HHHH", "HHHH"),
+    "HV_ONLY": ("HVHV", "HVHV"),
+    "VV_ONLY": ("VVVV", "VVVV"),
+    "VH_ONLY": ("VHVH", "VHVH"),
+    "RH_ONLY": ("RHRH", "RHRH"),
+    "RV_ONLY": ("RVRV", "RVRV"),
 }
 
 _FN_PATTERN = re.compile(
@@ -1391,7 +1397,8 @@ def prepare_native_frame(
 
     cross_path = os.path.join(
         work_dir,
-        f"{frame_label}_{frame.cross_key}.tif",
+        f"{frame_label}_{frame.cross_key}_aux.tif" if frame.co_key == frame.cross_key
+        else f"{frame_label}_{frame.cross_key}.tif",
     )
 
     valid_path = os.path.join(
@@ -2841,9 +2848,11 @@ def process_cluster(
         output_dir,
         f"{stem}_{cluster[0].co_key}.tif",
     )
+    single_pol = cluster[0].co_key == cluster[0].cross_key
     cross_path = os.path.join(
         output_dir,
-        f"{stem}_{cluster[0].cross_key}.tif",
+        f"{stem}_{cluster[0].cross_key}_singlepol_aux.tif" if single_pol
+        else f"{stem}_{cluster[0].cross_key}.tif",
     )
     count_path = os.path.join(
         output_dir,
@@ -2901,7 +2910,7 @@ def process_cluster(
         ),
     }
 
-    base_paths = (co_path, cross_path, count_path)
+    base_paths = (co_path, count_path) if single_pol else (co_path, cross_path, count_path)
     geometry_paths = (
         (incidence_path, lia_path)
         if make_lia
@@ -2929,7 +2938,7 @@ def process_cluster(
                 },
                 log=log,
             )
-            and validate_existing_output(
+            and (single_pol or validate_existing_output(
                 path=cross_path,
                 width=width,
                 height=height,
@@ -2941,7 +2950,7 @@ def process_cluster(
                     "covariance_term": cluster[0].cross_key,
                 },
                 log=log,
-            )
+            ))
             and validate_existing_output(
                 path=count_path,
                 width=width,
@@ -3569,13 +3578,10 @@ def process_cluster(
 
         paths_to_publish: list[tuple[str, str]] = []
         if not geometry_only:
-            paths_to_publish.extend(
-                [
-                    (temp_co_path, co_path),
-                    (temp_cross_path, cross_path),
-                    (temp_count_path, count_path),
-                ]
-            )
+            paths_to_publish.append((temp_co_path, co_path))
+            if not single_pol:
+                paths_to_publish.append((temp_cross_path, cross_path))
+            paths_to_publish.append((temp_count_path, count_path))
         if make_lia:
             paths_to_publish.extend(
                 [
@@ -3602,7 +3608,7 @@ def process_cluster(
         try:
             make_quicklook(
                 co_path,
-                cross_path,
+                co_path if single_pol else cross_path,
                 quicklook_path,
                 cluster[0].co_key,
                 cluster[0].cross_key,
@@ -3618,7 +3624,8 @@ def process_cluster(
 
         if not geometry_only:
             log.info("Saved: %s", co_path)
-            log.info("Saved: %s", cross_path)
+            if not single_pol:
+                log.info("Saved: %s", cross_path)
             log.info("Saved: %s", count_path)
         if make_lia:
             log.info("Saved: %s", incidence_path)
@@ -3780,10 +3787,10 @@ def process_group_worker(
             )
 
     if not frames:
-        log.warning(
-            f"No files in group {key} contain the requested polarization pair"
+        raise RuntimeError(
+            f"No files in group {key} contain the requested polarization configuration; "
+            "refusing to report a successful empty DPS job."
         )
-        return key, []
 
     co_keys = {frame.co_key for frame in frames}
     cross_keys = {frame.cross_key for frame in frames}
