@@ -6,6 +6,14 @@ This repository converts **NISAR L2 GCOV HDF5** granules into spatially aligned 
 
 The default **MAAP DPS wrapper** applies **7 × 7 Enhanced Lee speckle filtering** at native GCOV grid spacing **before additional spatial averaging to the ~100 m output grid**. GCOV products have *already undergone multilooking during NISAR product generation*; this filter does **not** operate on pre-multilooked SLC data.
 
+## Global polarization handling (feature branch)
+
+The MAAP wrapper now inspects **both frequencyA and frequencyB** in each GCOV HDF5 and runs every available diagonal intensity dataset. Complete HH/HV, VV/VH, and RH/RV pairs use the established two-band code path. Unpaired HHHH, HVHV, VVVV, VHVH, RHRH, or RVRV intensities use an explicit single-channel mode; an internal duplicated filtering stream is not published as a SAR channel. Quad-pol HH/HV/VH/VV produces both HH/HV and VV/VH output sets, so all four intensity terms are retained (not complex off-diagonal covariance terms).
+
+To prevent filename collisions between pairs and frequencies, MAAP output TIFFs are stored under `output/frequencyA/HH_HV/`, `output/frequencyA/VV_VH/`, `output/frequencyB/VV_VH/`, etc. The wrapper checks for each expected SAR TIFF, and a missing output or absent usable polarization causes DPS failure rather than silent success. The shell launcher accepts `HH_ONLY`, `HV_ONLY`, `VV_ONLY`, `VH_ONLY`, `RH_ONLY`, and `RV_ONLY` in addition to complete pairs. Native validity, geometry and EASE2 aggregation are unchanged for normal dual-pol modes. Single-pol mode applies the same existing mask/filtering workflow to one real intensity and an internal duplicate, then publishes only the real channel.
+
+**Deployment:** Rebuild the MAAP algorithm from the desired branch after merging. The already deployed `nisar-gcov-ease2/main` container will not change automatically. Test single- and quad-pol acquisitions in DPS before global submission. Existing CONUS/India products are not modified.
+
 ## Processing overview
 
 ```text
@@ -26,8 +34,8 @@ The main processor also supports **no filter** and **Gamma MAP**, and a **UTM** 
 | Setting | Current DPS wrapper behavior |
 | --- | --- |
 | NISAR input | L2 GCOV HDF5 from the specified S3 URL |
-| Frequency | `frequencyA` |
-| Polarizations | `auto` — first available supported co-/cross-pol pair (`HH_HV`, `VV_VH`, `RH_RV`) |
+| Frequency | Both available frequencies, processed independently |
+| Polarizations | All available HH/HV, VV/VH, RH/RV pairs plus individual leftover channels |
 | Radiometry | `gamma0`, output stored as **linear power**, not dB |
 | Speckle filter | `enhanced_lee` |
 | Filter window | `7` (7 × 7 native pixels) |
@@ -36,7 +44,7 @@ The main processor also supports **no filter** and **Gamma MAP**, and a **UTM** 
 | Frame mosaic | Disabled (`--mosaic no`) |
 | Intermediate rasters | Removed after successful processing |
 
-**Important:** `--pol_pair auto` selects a pair *only if both channels are available*. It does not fabricate a missing channel or automatically fall back from `frequencyA` to `frequencyB`. Granules without a supported pair in frequency A cannot produce a co-/cross-pol output using the current DPS defaults.
+**Important:** In the local processor, `--pol_pair auto` still selects the first complete pair in the selected frequency. The MAAP wrapper instead scans and processes both frequencies and all supported diagonal intensity terms, including single polarization.
 
 ## Repository files
 
