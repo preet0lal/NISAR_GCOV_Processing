@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import h5py
 import os
 import subprocess
 import sys
@@ -114,56 +115,83 @@ def main():
 
     w, s, e, n = args.bbox
 
-    cmd = [
-        sys.executable,
-        str(processor),
+    # Inspect available diagonal terms independently for each GCOV frequency.
+    # Run each compatible pair or single channel in a separate subfolder.
+    # This prevents frame-count, LIA, and quicklook filename collisions.
+    modes = {
+        "HH_HV": ("HHHH", "HVHV"),
+        "VV_VH": ("VVVV", "VHVH"),
+        "RH_RV": ("RHRH", "RVRV"),
+    }
+    single_modes = {
+        "HHHH": "HH_ONLY", "HVHV": "HV_ONLY",
+        "VVVV": "VV_ONLY", "VHVH": "VH_ONLY",
+        "RHRH": "RH_ONLY", "RVRV": "RV_ONLY",
+    }
+    with h5py.File(local_h5, "r") as h5:
+        root = "LSAR" if local_h5.name.startswith("NISAR_L") else "SSAR"
+        grids_path = f"/science/{root}/GCOV/grids"
+        if grids_path not in h5:
+            raise RuntimeError(f"Missing GCOV grids: {grids_path}")
+        grids = h5[grids_path]
+        tasks = []
+        for frequency in ("frequencyA", "frequencyB"):
+            if frequency not in grids:
+                continue
+            present = {p for p in single_modes if p in grids[frequency]}
+            consumed = set()
+            for mode, (co, cross) in modes.items():
+                if co in present and cross in present:
+                    tasks.append((frequency, mode, (co, cross)))
+                    consumed.update((co, cross))
+            for term in sorted(present - consumed):
+                tasks.append((frequency, single_modes[term], (term,)))
 
+    if not tasks:
+        raise RuntimeError("No supported diagonal GCOV intensity datasets in either frequency")
+
+    common_cmd = [
+        sys.executable, str(processor),
         "--input_dir", str(input_dir),
-        "--output_dir", str(output_dir),
-
-        "--frequency", "frequencyA",
-        "--pol_pair", "auto",
         "--normalization", "gamma0",
         "--filter", "enhanced_lee",
         "--filter_window", "7",
-
         "--grid_mode", "EASE2",
-
-        "--bbox",
-        str(w), str(s), str(e), str(n),
-
+        "--bbox", str(w), str(s), str(e), str(n),
         "--lia", "yes",
         "--nisar_dem_vrt", dem_vrt,
         "--dem_cache_dir", str(dem_cache),
-
-        # ONE granule/frame per DPS job
         "--mosaic", "no",
-
         "--workers", "1",
         "--tile_workers", "4",
-
         "--keep_intermediate", "no",
     ]
 
-    print("\nRunning:")
-    print(" ".join(cmd))
-
+    # Nonzero exit from any frequency/polarization task fails the whole DPS job.
+    # A per-task folder isolates output and proves which channels were generated.
     try:
-
-        subprocess.run(
-            cmd,
-            check=True,
-            env=env,
-        )
-
+        for frequency, mode, terms in tasks:
+            destination = output_dir / frequency / mode
+            destination.mkdir(parents=True, exist_ok=True)
+            cmd = common_cmd + [
+                "--output_dir", str(destination),
+                "--frequency", frequency,
+                "--pol_pair", mode,
+            ]
+            print("\\nRunning:", " ".join(cmd), flush=True)
+            subprocess.run(cmd, check=True, env=env)
+            for term in terms:
+                matches = list(destination.glob(f"*_{term}.tif"))
+                if not matches:
+                    raise RuntimeError(
+                        f"Processor returned success but {frequency}/{mode}/{term} output is missing"
+                    )
+            print(f"Verified {frequency}/{mode}: {', '.join(terms)}", flush=True)
     finally:
-
-        # Raw 7.5-GB HDF5 is not an output product.
-        # Remove it before DPS packages results.
         if local_h5.exists():
             local_h5.unlink()
 
-    print("\nDPS processing complete.")
+    print("\\nDPS processing complete.")
     print("Output:", output_dir)
 
 
